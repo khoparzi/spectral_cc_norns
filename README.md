@@ -3,6 +3,7 @@ A Norns patch that outputs eight channels of midi cc based on amplitude levels f
 
 This is all based on the engine made from the analysis code from [spectral_cc](https://github.com/khoparzi/spectral_cc)
 
+```
 -- 8-band dynamics visualizer & MIDI CC sender
 --
 -- PAGE 1: Master Stereo In/Out Level Monitor
@@ -14,3 +15,4 @@ This is all based on the engine made from the analysis code from [spectral_cc](h
 -- E1: Select Band (1 - 8)
 -- E2: Adjust Attack (ms) OR Gain
 -- E3: Adjust Decay (s)
+```
