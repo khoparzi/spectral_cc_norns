@@ -6,18 +6,24 @@ Engine_SpectralCC : CroneEngine {
     var <ampBusL, <ampBusR;
     var defaultAtk, defaultDcy, defaultGain;
     var numBands = 8;
+    var oscForwarder;
 
     *new { arg context, doneCallback;
         ^super.new(context, doneCallback);
     }
 
     alloc {
+        var matronAddr;
+
         defaultAtk = Array.fill(numBands, { arg i; (0.015 - (i * 0.0016)).max(0.001) });
         defaultDcy = Array.fill(numBands, { arg i; (0.18 - (i * 0.02)).max(0.01) });
         defaultGain = [1.0, 1.0, 0.7, 0.6, 0.6, 0.7, 1.0, 1.0];
 
         ampBusL = Bus.control(context.server, 1);
         ampBusR = Bus.control(context.server, 1);
+
+        // Matron (Norns Lua) listens on localhost port 10111
+        matronAddr = NetAddr("127.0.0.1", 10111);
 
         SynthDef(\bandSplitterSynth, {
             arg inBus = 0, outBus = 0, masterGain = 2.0,
@@ -44,14 +50,21 @@ Engine_SpectralCC : CroneEngine {
                 (smoothed * 4.0).clip(0.0, 1.0).pow(0.8);
             };
 
-            // Send 8-band levels to Lua over OSC
+            // SendReply to sclang
             SendReply.kr(Impulse.kr(30), '/fftAmps', envs);
 
-            // Audio pass-through to output bus
+            // Pass-through to output bus
             Out.ar(outBus, inSig);
         }).add;
 
         context.server.sync;
+
+        // Bridge OSC from scsynth to Matron (port 10111)
+        oscForwarder = OSCFunc({ arg msg;
+            // msg format: [ '/fftAmps', nodeID, replyID, val0, val1, ... val7 ]
+            // Forward only the 8 values to Lua
+            matronAddr.sendMsg('/bandAmps', *msg[3..10]);
+        }, '/fftAmps', context.server.addr);
 
         synth = Synth.new(\bandSplitterSynth, [
             \inBus, context.in_b,
@@ -71,7 +84,6 @@ Engine_SpectralCC : CroneEngine {
 
         this.addCommand("setAtk", "if", { arg msg;
             var idx = (msg[1] - 1).clip(0, 7);
-            synth.set((\atk ++ idx).asSymbol, msg[2]); // targeted set
             defaultAtk[idx] = msg[2];
             synth.set(\atk, defaultAtk);
         });
@@ -88,12 +100,12 @@ Engine_SpectralCC : CroneEngine {
             synth.set(\gains, defaultGain);
         });
 
-        // Stereo polls for Page 1
         this.addPoll("sc_amp_l", { ampBusL.getSynchronous; });
         this.addPoll("sc_amp_r", { ampBusR.getSynchronous; });
     }
 
     free {
+        oscForwarder.free;
         synth.free;
         ampBusL.free;
         ampBusR.free;
